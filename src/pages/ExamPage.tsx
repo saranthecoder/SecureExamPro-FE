@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { mockExams } from '@/data/mockData';
+import { useExamStore } from '@/contexts/ExamStoreContext';
 import { ExamAnswer, Question } from '@/types/exam';
 import { useExamSecurity } from '@/hooks/useExamSecurity';
 import { useExamTimer } from '@/hooks/useExamTimer';
@@ -20,7 +20,8 @@ const ExamPage = () => {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
 
-  const exam = useMemo(() => mockExams.find((e) => e.code === code), [code]);
+  const { getExamByCode } = useExamStore();
+  const exam = useMemo(() => getExamByCode(code || ''), [code, getExamByCode]);
   const questions = useMemo(() => exam?.questions || [], [exam]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
