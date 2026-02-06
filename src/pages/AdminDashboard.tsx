@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { mockExams, mockResults, mockActiveStudents } from '@/data/mockData';
+import { mockResults, mockActiveStudents } from '@/data/mockData';
+import { useExamStore } from '@/contexts/ExamStoreContext';
+import CreateExamDialog from '@/components/CreateExamDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -10,7 +12,6 @@ import {
   FileText,
   Users,
   BarChart3,
-  Plus,
   Eye,
   Download,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ const studentStatusColor = {
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
+  const { exams } = useExamStore();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('exams');
 
@@ -62,7 +64,7 @@ const AdminDashboard = () => {
         {/* Stats */}
         <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
           {[
-            { label: 'Total Exams', value: mockExams.length, icon: FileText },
+            { label: 'Total Exams', value: exams.length, icon: FileText },
             { label: 'Students', value: mockResults.length, icon: Users },
             { label: 'Avg Score', value: '75%', icon: BarChart3 },
           ].map((s) => (
@@ -107,9 +109,7 @@ const AdminDashboard = () => {
           <div className="animate-fade-in">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold">Examinations</h2>
-              <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
-                <Plus className="mr-1 h-4 w-4" /> Create Exam
-              </Button>
+              <CreateExamDialog />
             </div>
             <div className="overflow-hidden rounded-xl border bg-card">
               <table className="w-full">
@@ -123,7 +123,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {mockExams.map((exam) => (
+                  {exams.map((exam) => (
                     <tr key={exam.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3 font-medium">{exam.title}</td>
                       <td className="px-4 py-3 font-mono text-sm text-muted-foreground">{exam.code}</td>
