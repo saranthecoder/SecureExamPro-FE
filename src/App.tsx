@@ -11,10 +11,18 @@ import AdminDashboard from "./pages/AdminDashboard";
 import StudentDashboard from "./pages/StudentDashboard";
 import ExamPage from "./pages/ExamPage";
 import NotFound from "./pages/NotFound";
-
+import SignupPage from "./pages/Signup";
+import CoreAdminLogin from "@/pages/CoreAdminLogin";
+import CoreAdminRoute from "@/routes/CoreAdminRoute";
 const queryClient = new QueryClient();
 
-const ProtectedRoute = ({ children, role }: { children: React.ReactNode; role: 'admin' | 'student' }) => {
+const ProtectedRoute = ({
+  children,
+  role,
+}: {
+  children: React.ReactNode;
+  role: "admin" | "student";
+}) => {
   const { user, isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.role !== role) return <Navigate to="/" replace />;
@@ -28,16 +36,40 @@ const App = () => (
       <Sonner />
       <AuthProvider>
         <ExamStoreProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/admin" element={<ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>} />
-            <Route path="/student" element={<ProtectedRoute role="student"><StudentDashboard /></ProtectedRoute>} />
-            <Route path="/exam/:code" element={<ExamPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/coreadmin-login" element={<CoreAdminLogin />} />
+              <Route
+                path="/coreadmin"
+                element={
+                  <CoreAdminRoute>
+                    <AdminDashboard />
+                  </CoreAdminRoute>
+                }
+              />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              {/* <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute role="admin">
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              /> */}
+              <Route
+                path="/student"
+                element={
+                  <ProtectedRoute role="student">
+                    <StudentDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/exam/:code" element={<ExamPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
         </ExamStoreProvider>
       </AuthProvider>
     </TooltipProvider>
