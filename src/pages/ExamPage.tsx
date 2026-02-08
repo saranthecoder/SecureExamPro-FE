@@ -126,13 +126,17 @@ const ExamPage = () => {
     onDisqualify: () => submitExam(tabSwitchCount),
   });
 
+
+  const duration = exam?.duration ?? 0;
+
   // =======================
   // 🕒 TIMER HOOK
   // =======================
 
-  const timer = useExamTimer(exam?.duration || 30, () =>
-    submitExam(tabSwitchCount),
-  );
+  const timer = useExamTimer(
+  duration,
+  () => submitExam(tabSwitchCount)
+);
 
   // =======================
   // 🖱 NORMAL SUBMIT BUTTON
@@ -246,77 +250,121 @@ const ExamPage = () => {
   // ACTIVE EXAM
   // =======================
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#eef2f7] relative font-roboto">
+      {/* STRUCTURED WATERMARK */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+        <div className="text-center opacity-[0.04] rotate-[-25deg]">
+          <h1 className="text-[110px] font-extrabold tracking-widest text-gray-800 leading-none">
+            SECURE EXAM PRO
+          </h1>
+
+          <p className="text-2xl font-semibold tracking-[0.4em] text-gray-800 mt-4">
+            UNDER SR ECOSYSTEM
+          </p>
+
+          <p className="text-lg tracking-wide text-gray-800 mt-2">
+            Developed by Saran Velmurugan
+          </p>
+        </div>
+      </div>
+
+      {/* LOADER */}
       {submitting && (
         <div className="fixed inset-0 z-[9999] bg-white/80 backdrop-blur flex items-center justify-center">
           <Loader />
         </div>
       )}
 
+      {/* WARNING MODAL */}
       {showWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-card p-6 rounded-xl text-center">
-            <AlertTriangle className="mx-auto mb-2 text-warning" />
-            <p>{warningMessage}</p>
+          <div className="bg-white p-6 rounded-md shadow-lg w-[350px] text-center">
+            <AlertTriangle className="mx-auto mb-2 text-red-600" />
+            <p className="mb-4 text-sm">{warningMessage}</p>
             <Button onClick={dismissWarning}>Return</Button>
           </div>
         </div>
       )}
 
+      {/* CONFIRM SUBMIT */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-card p-6 rounded-xl text-center">
-            <h3 className="mb-3 font-bold">Submit Exam?</h3>
+          <div className="bg-white p-6 rounded-md shadow-lg w-[400px] text-center">
+            <h3 className="mb-3 font-bold text-lg">Submit Examination?</h3>
             <p className="mb-4 text-sm">
               Answered: {answeredCount}/{questions.length}
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={() => setShowConfirm(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit}>Submit</Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={handleSubmit}
+              >
+                Final Submit
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       {/* HEADER */}
-      <header className="sticky top-0 border-b bg-card p-4 flex justify-between">
-        <span className="font-semibold">{exam.title}</span>
+      <header className="sticky top-0 z-40 bg-[#0b3d91] text-white border-b shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+          {/* LEFT */}
+          <div>
+            <h1 className="text-lg font-semibold tracking-wide">
+              Secure Exam Pro – Computer Based Test
+            </h1>
+            <p className="text-xs opacity-80">
+              Under SR Ecosystem | Developed by Saran Velmurugan
+            </p>
+          </div>
 
-        <div
-          className={`px-3 py-1 rounded ${
-            timer.isLow ? "bg-destructive/20 text-destructive" : ""
-          }`}
-        >
-          <Clock className="inline h-4 w-4 mr-1" />
-          {timer.formatted}
+          {/* TIMER */}
+          <div
+            className={`px-4 py-1 rounded-md font-medium ${
+              timer.isLow
+                ? "bg-red-500 text-white animate-pulse"
+                : "bg-white text-[#0b3d91]"
+            }`}
+          >
+            <Clock className="inline h-4 w-4 mr-1" />
+            {timer.formatted}
+          </div>
+
+          {/* SUBMIT */}
+          <Button
+            onClick={() => setShowConfirm(true)}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            <Send className="mr-1 h-4 w-4" />
+            Submit Exam
+          </Button>
         </div>
-
-        <Button onClick={() => setShowConfirm(true)}>
-          <Send className="mr-1 h-4 w-4" />
-          Submit
-        </Button>
       </header>
 
-      <div className="container mx-auto flex gap-6 px-4 py-6">
-        {/* SIDE QUESTION BOXES */}
-        <div className="hidden w-48 shrink-0 md:block">
-          <div className="sticky top-20 rounded-xl border bg-card p-4 shadow-card">
-            <p className="mb-3 text-sm font-medium text-muted-foreground">
-              Questions
+      {/* MAIN CONTENT */}
+      <div className="max-w-7xl mx-auto flex gap-6 px-6 py-6">
+        {/* QUESTION PALETTE */}
+        <div className="hidden w-56 shrink-0 md:block">
+          <div className="sticky top-24 bg-white border border-gray-300 p-4 rounded-md shadow-sm">
+            <p className="mb-3 text-sm font-semibold text-gray-600">
+              Question Palette
             </p>
-            <div className="grid grid-cols-4 gap-2">
-              {questions.map((_: any, i: number) => (
+
+            <div className="grid grid-cols-5 gap-2">
+              {questions.map((_, i) => (
                 <button
                   key={i}
                   onClick={() => setCurrentIndex(i)}
-                  className={`h-9 w-9 rounded-lg text-sm ${
+                  className={`h-9 w-9 text-sm font-medium rounded-sm border transition ${
                     i === currentIndex
-                      ? "bg-accent text-accent-foreground"
+                      ? "bg-[#0b3d91] text-white border-[#0b3d91]"
                       : answers[i]?.selectedOption
-                        ? "bg-success/20 text-success"
-                        : "bg-muted"
+                        ? "bg-green-100 text-green-700 border-green-400"
+                        : "bg-white border-gray-300 hover:bg-gray-100"
                   }`}
                 >
                   {i + 1}
@@ -328,14 +376,16 @@ const ExamPage = () => {
 
         {/* QUESTION AREA */}
         <div className="flex-1">
-          <div className="mb-6">
+          <div className="mb-4 text-sm font-medium text-gray-600">
             Question {currentIndex + 1} of {questions.length}
           </div>
 
-          <div className="rounded-xl border bg-card p-6 shadow-card">
-            <h2 className="mb-6">{currentQuestion.question}</h2>
+          <div className="bg-white border border-gray-300 p-6 shadow-sm rounded-md">
+            <h2 className="mb-6 text-lg font-semibold text-gray-800">
+              Q{currentIndex + 1}. {currentQuestion.question}
+            </h2>
 
-            {(["A", "B", "C", "D"] as const).map((opt) => {
+            {["A", "B", "C", "D"].map((opt) => {
               const text = currentQuestion.options[opt];
               const isSelected = answers[currentIndex]?.selectedOption === opt;
 
@@ -343,8 +393,10 @@ const ExamPage = () => {
                 <button
                   key={opt}
                   onClick={() => selectOption(opt)}
-                  className={`w-full text-left p-3 mb-3 border rounded ${
-                    isSelected ? "border-accent bg-accent/10" : ""
+                  className={`w-full text-left px-4 py-3 mb-3 border rounded-md transition-all ${
+                    isSelected
+                      ? "border-[#0b3d91] bg-blue-50 font-medium"
+                      : "border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   <strong>{opt}.</strong> {text}
@@ -353,6 +405,7 @@ const ExamPage = () => {
             })}
           </div>
 
+          {/* NAVIGATION */}
           <div className="flex justify-between mt-6">
             <Button
               disabled={currentIndex === 0}
@@ -372,6 +425,17 @@ const ExamPage = () => {
           </div>
         </div>
       </div>
+
+      {/* FOOTER STATUS BAR */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-300 px-6 py-2 text-sm flex justify-between">
+        <div>
+          Answered: <span className="font-semibold">{answeredCount}</span>
+        </div>
+        <div>
+          Total Questions:{" "}
+          <span className="font-semibold">{questions.length}</span>
+        </div>
+      </footer>
     </div>
   );
 };

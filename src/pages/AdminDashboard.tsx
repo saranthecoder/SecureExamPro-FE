@@ -59,7 +59,7 @@ const AdminDashboard = () => {
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <img src="/public/logo.png" alt="SecureExam Pro Logo" className="h-12 w-12" />
+            <img src="/logo.png" alt="SecureExam Pro Logo" className="h-12 w-12" />
             <span className="text-lg font-bold">SecureExam Pro</span>
             <Badge variant="secondary" className="ml-2 text-xs">
               Core-Admin

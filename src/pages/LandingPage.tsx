@@ -39,8 +39,8 @@ const LandingPage = () => {
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-50">
         <nav className="container mx-auto flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-2">
-            <img src="/public/logo.png" alt="SecureExam Pro Logo" className="h-12 w-12" />
-            <span className="text-xl font-bold tracking-tight">
+            <img src="/logo.png" alt="SecureExam Pro Logo" className="h-12 w-12" />
+            <span className="text-3xl font-bold tracking-tight">
               SecureExam Pro
             </span>
           </div>

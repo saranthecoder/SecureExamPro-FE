@@ -61,7 +61,7 @@ const AuthPage = () => {
         <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
         <div className="relative z-10 text-center px-12 max-w-md">
-          <Shield className="mx-auto mb-6 h-16 w-16 text-white" />
+          <img src="/logo.png" alt="SecureExam Pro Logo" className="mx-auto mb-6 h-20 w-20 text-white" />
 
           <h1 className="text-4xl font-extrabold mb-4 tracking-tight">
             SecureExam Pro
