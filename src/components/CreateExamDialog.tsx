@@ -168,7 +168,15 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="relative max-w-lg">
+      <DialogContent
+        className="
+    fixed left-1/2 top-1/2
+    -translate-x-1/2 -translate-y-1/2
+    max-w-lg w-full
+    max-h-[85vh] overflow-y-auto
+    rounded-xl
+  "
+      >
         {/* 🔥 LOADER OVERLAY */}
         {loading && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl">
@@ -178,8 +186,10 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         <DialogHeader>
           <DialogTitle>Create New Exam</DialogTitle>
         </DialogHeader>
-        
-        <div className={`space-y-4 pt-2 ${loading ? "pointer-events-none opacity-40" : ""}`}>
+
+        <div
+          className={`space-y-4 pt-2 ${loading ? "pointer-events-none opacity-40" : ""}`}
+        >
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Exam Title</Label>
