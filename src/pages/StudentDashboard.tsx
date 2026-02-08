@@ -36,20 +36,35 @@ const StudentDashboard = () => {
       return;
     }
 
+    const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
+
+    if (!parsedUser?.email) {
+      setError("User session expired. Please login again.");
+      return;
+    }
+
     setError("");
     setLoading(true);
 
     try {
-      const res = await fetch(`${BASE_URL}/exam/${trimmedCode}`);
+      const res = await fetch(
+        `${BASE_URL}/exam/${trimmedCode}?email=${parsedUser.email}`,  
+      );
+
       const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.message || "Invalid exam code");
-        setLoading(false);
+      // 🚨 If already attempted (403)
+      if (res.status === 403) {
+        setError(data.message);
         return;
       }
 
-      // Store exam code for exam page usage
+      if (!res.ok) {
+        setError(data.message || "Invalid exam code");
+        return;
+      }
+
+      // Store exam code
       localStorage.setItem("currentExamCode", trimmedCode);
 
       navigate(`/exam/${trimmedCode}`);
@@ -74,9 +89,7 @@ const StudentDashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {user?.name}
-            </span>
+            <span className="text-sm text-muted-foreground">{user?.name}</span>
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="mr-1 h-4 w-4" /> Logout
             </Button>
@@ -104,13 +117,9 @@ const StudentDashboard = () => {
             <Input
               placeholder="Enter exam code (e.g. DSA2026)"
               value={examCode}
-              onChange={(e) =>
-                setExamCode(e.target.value.toUpperCase())
-              }
+              onChange={(e) => setExamCode(e.target.value.toUpperCase())}
               className="text-center font-mono text-lg tracking-widest"
-              onKeyDown={(e) =>
-                e.key === "Enter" && handleJoinExam()
-              }
+              onKeyDown={(e) => e.key === "Enter" && handleJoinExam()}
             />
 
             <Button
@@ -122,17 +131,10 @@ const StudentDashboard = () => {
             </Button>
           </div>
 
-          {error && (
-            <p className="mt-4 text-sm text-red-500">
-              {error}
-            </p>
-          )}
+          {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Example code:{" "}
-            <span className="font-mono font-medium">
-              DSA2026
-            </span>
+            Example code: <span className="font-mono font-medium">DSA2026</span>
           </p>
         </div>
       </div>

@@ -4,6 +4,8 @@ import BASE_URL from "@/config/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Loader from "@/components/Loader";
+
 import {
   Dialog,
   DialogContent,
@@ -166,12 +168,18 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-lg">
+      <DialogContent className="relative max-w-lg">
+        {/* 🔥 LOADER OVERLAY */}
+        {loading && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl">
+            <Loader />
+          </div>
+        )}
         <DialogHeader>
           <DialogTitle>Create New Exam</DialogTitle>
         </DialogHeader>
-
-        <div className="space-y-4 pt-2">
+        
+        <div className={`space-y-4 pt-2 ${loading ? "pointer-events-none opacity-40" : ""}`}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Exam Title</Label>
@@ -213,7 +221,7 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
               <Label>End Time</Label>
               <Input
                 type="datetime-local"
-                 className="w-full h-11 rounded-md border px-3 py-2 text-sm bg-background"
+                className="w-full h-11 rounded-md border px-3 py-2 text-sm bg-background"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
               />

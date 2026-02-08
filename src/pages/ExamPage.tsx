@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useExamSecurity } from "@/hooks/useExamSecurity";
 import { useExamTimer } from "@/hooks/useExamTimer";
 import { Button } from "@/components/ui/button";
+import Loader from "@/components/Loader";
+
 import {
   AlertTriangle,
   ChevronLeft,
@@ -24,6 +26,7 @@ const ExamPage = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<any[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [started, setStarted] = useState(false);
 
@@ -64,7 +67,11 @@ const ExamPage = () => {
   // =======================
 
   const submitExam = async (finalTabSwitchCount: number) => {
+    if (submitting) return; // prevent double submit
+
     try {
+      setSubmitting(true);
+
       const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
 
       const payload = {
@@ -88,16 +95,17 @@ const ExamPage = () => {
 
       if (!res.ok) {
         alert(data.message || "Submission failed");
+        setSubmitting(false);
         return;
       }
-
-      console.log("Submission response:", data);
 
       setSubmitted(true);
       setShowConfirm(false);
       exitFullscreen();
     } catch (error) {
       alert("Server error during submission");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -239,6 +247,12 @@ const ExamPage = () => {
   // =======================
   return (
     <div className="min-h-screen bg-background">
+      {submitting && (
+        <div className="fixed inset-0 z-[9999] bg-white/80 backdrop-blur flex items-center justify-center">
+          <Loader />
+        </div>
+      )}
+
       {showWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-card p-6 rounded-xl text-center">

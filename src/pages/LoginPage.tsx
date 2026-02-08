@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield } from "lucide-react";
+import Loader from "@/components/Loader";
 
 const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -12,6 +13,7 @@ const AuthPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const { login, signup } = useAuth();
   const navigate = useNavigate();
@@ -25,6 +27,8 @@ const AuthPage = () => {
       return;
     }
 
+    setLoading(true);
+
     let success = false;
 
     if (isLogin) {
@@ -34,7 +38,6 @@ const AuthPage = () => {
     }
 
     if (success) {
-      // Backend decides role
       const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
 
       if (storedUser.role === "admin") {
@@ -45,102 +48,127 @@ const AuthPage = () => {
     } else {
       setError(isLogin ? "Invalid email or password" : "Signup failed");
     }
+
+    setLoading(false);
   };
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left Section */}
-      <div className="hidden w-1/2 bg-gradient-to-br from-indigo-600 to-purple-600 lg:flex items-center justify-center text-white">
-        <div className="text-center px-12">
+<>
+    {loading && <Loader />}
+    <div className="flex min-h-screen bg-background">
+      {/* ================= LEFT BRAND SECTION ================= */}
+      <div className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-emerald-700 via-green-700 to-emerald-900 lg:flex items-center justify-center text-white">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
+
+        <div className="relative z-10 text-center px-12 max-w-md">
           <Shield className="mx-auto mb-6 h-16 w-16 text-white" />
-          <h1 className="text-4xl font-extrabold mb-3">
+
+          <h1 className="text-4xl font-extrabold mb-4 tracking-tight">
             SecureExam Pro
           </h1>
-          <p className="text-white/80">
-            Secure online examination platform with advanced monitoring.
+
+          <p className="text-white/80 mb-6">
+            Enterprise-grade online examination platform with advanced
+            anti-cheat monitoring and secure proctoring.
           </p>
+
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm">
+            Secure • Proctored • Reliable
+          </div>
+
+          <div className="mt-12 text-sm text-white/70">
+            Developed by <span className="font-semibold">Saran Velmurugan</span>
+            <br />
+            Under <span className="font-semibold">SR Ecosystem</span>
+          </div>
         </div>
       </div>
 
-      {/* Right Section */}
+      {/* ================= RIGHT FORM SECTION ================= */}
       <div className="flex w-full items-center justify-center px-6 lg:w-1/2">
-        <div className="w-full max-w-md bg-card shadow-xl rounded-2xl p-8">
+        <div className="w-full max-w-md rounded-2xl border bg-card p-10 shadow-2xl">
+          {/* Header */}
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold">
-              {isLogin ? "Welcome Back !" : "Create Your Account"}
+            <h2 className="text-3xl font-bold tracking-tight">
+              {isLogin ? "Welcome Back" : "Create Account"}
             </h2>
-            <p className="text-sm text-muted-foreground mt-1">
+
+            <p className="text-sm text-muted-foreground mt-2">
               {isLogin
-                ? "Login to continue your exam"
-                : "Sign up to start taking exams"}
+                ? "Login to access your exams"
+                : "Register to begin secure assessments"}
             </p>
           </div>
 
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div>
-                <Label>Full Name</Label>
+                <Label className="text-sm font-medium">Full Name</Label>
                 <Input
                   placeholder="John Doe"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="mt-1.5"
-                />
+                  className="mt-2"
+                  />
               </div>
             )}
 
             <div>
-              <Label>Email</Label>
+              <Label className="text-sm font-medium">Email</Label>
               <Input
                 type="email"
                 placeholder="student@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1.5"
-              />
+                className="mt-2"
+                />
             </div>
 
             <div>
-              <Label>Password</Label>
+              <Label className="text-sm font-medium">Password</Label>
               <Input
                 type="password"
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5"
-              />
+                className="mt-2"
+                />
             </div>
 
             {error && (
-              <p className="text-sm text-red-500">{error}</p>
+              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600 border border-red-200">
+                {error}
+              </div>
             )}
 
             <Button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5"
             >
               {isLogin ? "Login" : "Sign Up"}
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm">
+          {/* Toggle */}
+          <div className="mt-8 text-center text-sm text-muted-foreground">
             {isLogin ? (
               <>
-                Don't have an account?{" "}
+                Don’t have an account?{" "}
                 <span
-                  className="text-indigo-600 font-medium cursor-pointer hover:underline"
+                  className="text-emerald-600 font-semibold cursor-pointer hover:underline"
                   onClick={() => setIsLogin(false)}
-                >
-                  Sign Up
+                  >
+                  Create one
                 </span>
               </>
             ) : (
               <>
-                Already have an account?{" "}
+                Already registered?{" "}
                 <span
-                  className="text-indigo-600 font-medium cursor-pointer hover:underline"
+                  className="text-emerald-600 font-semibold cursor-pointer hover:underline"
                   onClick={() => setIsLogin(true)}
-                >
+                  >
                   Login
                 </span>
               </>
@@ -149,6 +177,7 @@ const AuthPage = () => {
         </div>
       </div>
     </div>
+            </>
   );
 };
 
