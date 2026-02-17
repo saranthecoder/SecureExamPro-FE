@@ -30,6 +30,18 @@ const ExamPage = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [started, setStarted] = useState(false);
 
+   //===================
+  //Shuffler
+  //===================
+  const shuffleArray = (array: any[]) => {
+    const arr = [...array]; // avoid mutating original
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
   // 🔥 FETCH EXAM FROM BACKEND
   useEffect(() => {
     const fetchExam = async () => {
@@ -43,9 +55,31 @@ const ExamPage = () => {
           return;
         }
 
-        setExam(data);
+        // 🔀 Shuffle Questions
+        const shuffledQuestions = shuffleArray(data.questions).map((q: any) => {
+          // Convert options object → array
+          const optionsArray = Object.entries(q.options).map(
+            ([key, value]) => ({
+              key,
+              value,
+            }),
+          );
 
-        const initialAnswers = data.questions.map((q: any) => ({
+          // Shuffle options
+          const shuffledOptions = shuffleArray(optionsArray);
+
+          return {
+            ...q,
+            shuffledOptions,
+          };
+        });
+
+        setExam({
+          ...data,
+          questions: shuffledQuestions,
+        });
+
+        const initialAnswers = shuffledQuestions.map((q: any) => ({
           questionId: q._id,
           selectedOption: null,
         }));
@@ -126,17 +160,13 @@ const ExamPage = () => {
     onDisqualify: () => submitExam(tabSwitchCount),
   });
 
-
   const duration = exam?.duration ?? 0;
 
   // =======================
   // 🕒 TIMER HOOK
   // =======================
 
-  const timer = useExamTimer(
-  duration,
-  () => submitExam(tabSwitchCount)
-);
+  const timer = useExamTimer(duration, () => submitExam(tabSwitchCount));
 
   // =======================
   // 🖱 NORMAL SUBMIT BUTTON
@@ -245,6 +275,8 @@ const ExamPage = () => {
       </div>
     );
   }
+
+ 
 
   // =======================
   // ACTIVE EXAM
@@ -385,24 +417,26 @@ const ExamPage = () => {
               Q{currentIndex + 1}. {currentQuestion.question}
             </h2>
 
-            {["A", "B", "C", "D"].map((opt) => {
-              const text = currentQuestion.options[opt];
-              const isSelected = answers[currentIndex]?.selectedOption === opt;
+            {currentQuestion.shuffledOptions.map((opt: any, index: number) => {
+              const isSelected =
+                answers[currentIndex]?.selectedOption === opt.key;
 
               return (
                 <button
-                  key={opt}
-                  onClick={() => selectOption(opt)}
+                  key={index}
+                  onClick={() => selectOption(opt.key)}
                   className={`w-full text-left px-4 py-3 mb-3 border rounded-md transition-all ${
                     isSelected
                       ? "border-[#0b3d91] bg-blue-50 font-medium"
                       : "border-gray-300 hover:bg-gray-50"
                   }`}
                 >
-                  <strong>{opt}.</strong> {text}
+                  <strong>{String.fromCharCode(65 + index)}.</strong>{" "}
+                  {opt.value}
                 </button>
               );
             })}
+
           </div>
 
           {/* NAVIGATION */}
