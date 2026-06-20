@@ -106,44 +106,128 @@ const AdminDashboard = () => {
     setViewingStudentScreen({ examCode, email, name });
   };
 
-  // Poll screen frames for ALL students in the active exam
+  const handleTerminateStudent = async (examCode: string, email: string) => {
+    if (!window.confirm(`Are you sure you want to terminate this student's exam? This action will disqualify the candidate immediately.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${BASE_URL}/exam/terminate/${examCode}/${encodeURIComponent(email)}`, {
+        method: "POST"
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || "Student terminated successfully.");
+        // Refresh updates immediately
+        if (monitorExam) {
+          const resultsRes = await fetch(`${BASE_URL}/exam/results/${monitorExam.examCode}`);
+          const dbResults = resultsRes.ok ? await resultsRes.json() : [];
+          
+          const framesRes = await fetch(`${BASE_URL}/exam/screen-frames/${monitorExam.examCode}`);
+          const activeFrames = framesRes.ok ? await framesRes.json() : {};
+          
+          setLiveScreenFramesGrid(activeFrames);
+          
+          const dbEmails = new Set(dbResults.map((r: any) => r.studentEmail?.toLowerCase()));
+          const activeResults = Object.keys(activeFrames)
+            .filter((email) => !dbEmails.has(email.toLowerCase()))
+            .map((email) => {
+              const frameInfo = activeFrames[email];
+              return {
+                _id: `active-${email}`,
+                studentName: frameInfo.name || "Candidate",
+                studentEmail: email,
+                score: "In Progress",
+                positiveMarks: 0,
+                negativeMarks: 0,
+                totalMarks: monitorExam.questions ? monitorExam.questions.reduce((sum: number, q: any) => sum + (q.marks || 0), 0) : 0,
+                tabSwitchCount: 0,
+                faceWarningCount: 0,
+                isActive: true,
+                isOffline: frameInfo.isOffline,
+                submittedAt: null
+              };
+            });
+            
+          setResults([...activeResults, ...dbResults]);
+        }
+      } else {
+        alert(data.error || "Failed to terminate student.");
+      }
+    } catch (err) {
+      console.error("Error terminating student:", err);
+      alert("Server error terminating student.");
+    }
+  };
+
+  // Poll screen frames and DB results for ALL students in the active exam
   useEffect(() => {
-    if (!monitorExam || activeViewTab !== "grid") {
+    if (!monitorExam) {
       setLiveScreenFramesGrid({});
       return;
     }
 
-    const fetchAllScreenFrames = async () => {
+    const fetchUpdates = async () => {
       try {
-        const res = await fetch(`${BASE_URL}/exam/screen-frames/${monitorExam.examCode}`);
-        const data = await res.json();
-        if (res.ok) {
-          setLiveScreenFramesGrid(data);
+        const res = await fetch(`${BASE_URL}/exam/results/${monitorExam.examCode}`);
+        const dbResults = res.ok ? await res.json() : [];
 
-          // If zoomed student is active, update their specific frame in real-time
-          setZoomedStudent((current) => {
-            if (!current) return null;
-            const updated = data[current.email.toLowerCase()];
-            if (updated) {
-              return {
-                ...current,
-                frame: updated.frame,
-                isOffline: updated.isOffline,
-              };
-            }
-            return current;
+        const framesRes = await fetch(`${BASE_URL}/exam/screen-frames/${monitorExam.examCode}`);
+        const activeFrames = framesRes.ok ? await framesRes.json() : {};
+
+        setLiveScreenFramesGrid(activeFrames);
+
+        // Merge DB results with active stream sessions
+        const dbEmails = new Set(dbResults.map((r: any) => r.studentEmail?.toLowerCase()));
+        
+        const activeResults = Object.keys(activeFrames)
+          .filter((email) => !dbEmails.has(email.toLowerCase()))
+          .map((email) => {
+            const frameInfo = activeFrames[email];
+            return {
+              _id: `active-${email}`,
+              studentName: frameInfo.name || "Candidate",
+              studentEmail: email,
+              score: "In Progress",
+              positiveMarks: 0,
+              negativeMarks: 0,
+              totalMarks: monitorExam.questions ? monitorExam.questions.reduce((sum: number, q: any) => sum + (q.marks || 0), 0) : 0,
+              tabSwitchCount: 0,
+              faceWarningCount: 0,
+              isActive: true,
+              isOffline: frameInfo.isOffline,
+              submittedAt: null
+            };
           });
-        }
+
+        setResults([...activeResults, ...dbResults]);
+
+        // Update zoomed student if active
+        setZoomedStudent((current) => {
+          if (!current) return null;
+          const updated = activeFrames[current.email.toLowerCase()];
+          if (updated) {
+            return {
+              ...current,
+              frame: updated.frame,
+              isOffline: updated.isOffline,
+            };
+          }
+          return current;
+        });
+
       } catch (err) {
-        console.error("Error fetching all screen frames:", err);
+        console.error("Error fetching updates:", err);
+      } finally {
+        setLoadingResults(false);
       }
     };
 
-    fetchAllScreenFrames();
-    const intervalId = setInterval(fetchAllScreenFrames, 3000);
+    fetchUpdates();
+    const intervalId = setInterval(fetchUpdates, 3000);
 
     return () => clearInterval(intervalId);
-  }, [monitorExam, activeViewTab]);
+  }, [monitorExam]);
 
   const fetchExams = async () => {
     try {
@@ -176,23 +260,9 @@ const AdminDashboard = () => {
   };
 
   // 🔥 FETCH RESULTS FOR A SPECIFIC EXAM
-  const handleOpenMonitor = async (exam: any) => {
+  const handleOpenMonitor = (exam: any) => {
     setMonitorExam(exam);
     setLoadingResults(true);
-    try {
-      const res = await fetch(`${BASE_URL}/exam/results/${exam.examCode}`);
-      const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        setResults(data);
-      } else {
-        setResults([]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch results", err);
-      setResults([]);
-    } finally {
-      setLoadingResults(false);
-    }
   };
 
   // 🔥 EXPORT RESULTS TO SPREADSHEET
@@ -206,15 +276,19 @@ const AdminDashboard = () => {
       "S.No": index + 1,
       "Student Name": r.studentName,
       "Student Email": r.studentEmail || "N/A",
-      "Score Obtained": r.score,
+      "Score Obtained (Net)": r.score,
+      "Positive Marks Obtained": r.isActive ? "-" : (r.positiveMarks || 0),
+      "Negative Marks Obtained": r.isActive ? "-" : (r.negativeMarks || 0),
       "Total Marks": r.totalMarks,
       "Tab Switches": r.tabSwitchCount || 0,
       "Face Warnings": r.faceWarningCount || 0,
       "AI Proctor Verdict": r.terminated 
         ? (r.faceTurnTerminated ? "TERMINATED (Face turns limit)" : "TERMINATED (Tab switches limit)")
-        : (r.tabSwitched || (r.faceWarningCount && r.faceWarningCount > 0))
-          ? "WARNING FLAGGED" 
-          : "CLEAN",
+        : r.isActive 
+          ? "ACTIVE IN PROGRESS"
+          : (r.tabSwitched || (r.faceWarningCount && r.faceWarningCount > 0))
+            ? "WARNING FLAGGED" 
+            : "CLEAN",
       "Submission Date": r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "N/A"
     }));
 
@@ -710,13 +784,15 @@ const AdminDashboard = () => {
                         <div className="flex justify-between items-center text-[10px] text-slate-400">
                           <span>Warnings (Tab/Face):</span>
                           <span className="font-bold font-mono text-slate-200">
-                            {r.tabSwitchCount || 0} / {r.faceWarningCount || 0}
+                            {r.isActive ? "-" : `${r.tabSwitchCount || 0} / ${r.faceWarningCount || 0}`}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-[10px] text-slate-400">
                           <span>Status Verdict:</span>
                           <span>
-                            {r.terminated ? (
+                            {r.isActive ? (
+                              <span className="text-blue-400 font-bold uppercase animate-pulse">Writing</span>
+                            ) : r.terminated ? (
                               <span className="text-red-400 font-bold uppercase">Disqualified</span>
                             ) : (r.tabSwitched || (r.faceWarningCount && r.faceWarningCount > 0)) ? (
                               <span className="text-amber-400 font-bold uppercase">Warnings Flagged</span>
@@ -725,6 +801,20 @@ const AdminDashboard = () => {
                             )}
                           </span>
                         </div>
+                        {r.isActive && (
+                          <div className="pt-2 border-t border-slate-800/80 flex justify-end">
+                            <Button
+                              variant="destructive"
+                              className="h-6 px-2 text-[9px] gap-1 font-bold bg-red-600 hover:bg-red-750 text-white rounded-lg flex items-center shadow-sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTerminateStudent(monitorExam.examCode, r.studentEmail);
+                              }}
+                            >
+                              <AlertTriangle className="h-2.5 w-2.5" /> Terminate Session
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -737,7 +827,9 @@ const AdminDashboard = () => {
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-bold text-[10px] tracking-wider">
                       <th className="px-4 py-3">Student Name</th>
                       <th className="px-4 py-3">Email Address</th>
-                      <th className="px-4 py-3 text-center">Score</th>
+                      <th className="px-4 py-3 text-center">Net Score</th>
+                      <th className="px-4 py-3 text-center">Positive Marks</th>
+                      <th className="px-4 py-3 text-center">Negative Marks</th>
                       <th className="px-4 py-3 text-center">Warnings (Tab / Face)</th>
                       <th className="px-4 py-3 text-center">Proctor Status</th>
                       <th className="px-4 py-3 text-right">Submitted At</th>
@@ -750,13 +842,27 @@ const AdminDashboard = () => {
                         <td className="px-4 py-3 font-bold text-slate-800">{r.studentName}</td>
                         <td className="px-4 py-3 text-slate-500">{r.studentEmail || "N/A"}</td>
                         <td className="px-4 py-3 text-center font-extrabold text-blue-600">
-                          {r.score} / {r.totalMarks}
+                          {r.isActive ? (
+                            <span className="text-slate-400 font-semibold italic">In Progress</span>
+                          ) : (
+                            `${r.score} / ${r.totalMarks}`
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-emerald-600">
+                          {r.isActive ? "-" : `+${r.positiveMarks || 0}`}
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-red-650">
+                          {r.isActive ? "-" : `-${r.negativeMarks || 0}`}
                         </td>
                         <td className="px-4 py-3 text-center font-mono font-bold text-slate-400">
-                          {r.tabSwitchCount || 0} / {r.faceWarningCount || 0}
+                          {r.isActive ? "-" : `${r.tabSwitchCount || 0} / ${r.faceWarningCount || 0}`}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {r.terminated ? (
+                          {r.isActive ? (
+                            <Badge className="bg-blue-50 text-blue-700 border border-blue-100 text-[10px] rounded font-bold uppercase py-0.5 px-2 animate-pulse">
+                              Writing
+                            </Badge>
+                          ) : r.terminated ? (
                             <Badge className="bg-red-50 text-red-700 border border-red-100 text-[10px] rounded font-bold uppercase py-0.5 px-2">
                               {r.faceTurnTerminated ? "Disqualified (Face)" : "Disqualified (Tab)"}
                             </Badge>
@@ -771,19 +877,37 @@ const AdminDashboard = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-slate-400">
-                          {r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "N/A"}
+                          {r.isActive ? (
+                            <span className="text-emerald-600 font-bold animate-pulse">Active Now</span>
+                          ) : r.submittedAt ? (
+                            new Date(r.submittedAt).toLocaleString()
+                          ) : (
+                            "N/A"
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {monitorExam?.cameraMonitor && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2 text-[10px] gap-1 font-bold text-blue-600 border-blue-200 hover:bg-blue-50"
-                              onClick={() => handleViewScreen(monitorExam.examCode, r.studentEmail, r.studentName)}
-                            >
-                              <Eye className="h-3 w-3" /> View Screen
-                            </Button>
-                          )}
+                          <div className="flex justify-end gap-1.5">
+                            {monitorExam?.cameraMonitor && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[10px] gap-1 font-bold text-blue-600 border-blue-200 hover:bg-blue-50"
+                                onClick={() => handleViewScreen(monitorExam.examCode, r.studentEmail, r.studentName)}
+                              >
+                                <Eye className="h-3 w-3" /> View Screen
+                              </Button>
+                            )}
+                            {r.isActive && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-7 px-2 text-[10px] gap-1 font-bold bg-red-600 hover:bg-red-750 text-white rounded-lg flex items-center shadow-sm"
+                                onClick={() => handleTerminateStudent(monitorExam.examCode, r.studentEmail)}
+                              >
+                                <AlertTriangle className="h-3 w-3" /> Terminate
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

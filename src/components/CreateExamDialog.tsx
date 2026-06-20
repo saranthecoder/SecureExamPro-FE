@@ -106,20 +106,22 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         "Option D": "46",
         "Correct Answer": "B",
         "Marks": 2,
+        "Negative Marks": 0.5,
         "Code Snippet": "",
         "Image URL": ""
       },
       {
         "Section": "Logical Reasoning",
-        "Question": "Identify the missing pattern from the diagram in the URL link.",
-        "Option A": "Pattern A",
-        "Option B": "Pattern B",
-        "Option C": "Pattern C",
-        "Option D": "Pattern D",
-        "Correct Answer": "C",
-        "Marks": 2,
+        "Question": "Identify the correct parameters from the options (Select all correct options).",
+        "Option A": "Parameter A",
+        "Option B": "Parameter B",
+        "Option C": "Parameter C",
+        "Option D": "Parameter D",
+        "Correct Answer": "A,C",
+        "Marks": 3,
+        "Negative Marks": 1,
         "Code Snippet": "",
-        "Image URL": "https://picsum.photos/400/200?random=1"
+        "Image URL": ""
       },
       {
         "Section": "Verbal Ability",
@@ -130,6 +132,7 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         "Option D": "Support",
         "Correct Answer": "B",
         "Marks": 1,
+        "Negative Marks": 0.25,
         "Code Snippet": "",
         "Image URL": ""
       },
@@ -142,6 +145,7 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         "Option D": "20",
         "Correct Answer": "B",
         "Marks": 2,
+        "Negative Marks": 0.5,
         "Code Snippet": "INT count = 0\nFOR i = 1 TO 4\n  count = count + i\nENDFOR\nPRINT count",
         "Image URL": ""
       },
@@ -154,6 +158,7 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         "Option D": "Linked List",
         "Correct Answer": "B",
         "Marks": 2,
+        "Negative Marks": 0,
         "Code Snippet": "",
         "Image URL": ""
       }
@@ -364,7 +369,7 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
                 {file?.name || "Click to upload Excel spreadsheet (.xlsx)"}
               </p>
               <p className="text-[10px] text-slate-400 leading-normal max-w-[280px]">
-                Must define columns: Section, Question, Option A, Option B, Option C, Option D, Correct Answer, Marks, Code Snippet, Image URL.
+                Must define columns: Section, Question, Option A, Option B, Option C, Option D, Correct Answer, Marks, Negative Marks, Code Snippet, Image URL. For multiple correct options, separate correct answers with commas (e.g. A,C).
               </p>
 
               <input

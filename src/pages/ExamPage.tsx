@@ -62,6 +62,7 @@ const ExamPage = () => {
   // Online / Offline states
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineSyncPending, setOfflineSyncPending] = useState(false);
+  const [isTerminatedByAdmin, setIsTerminatedByAdmin] = useState(false);
 
   // Callback ref to bind webcam stream immediately upon element mount/remount
   const setVideoRef = useCallback((node: HTMLVideoElement | null) => {
@@ -574,6 +575,12 @@ const ExamPage = () => {
     });
   }, [tabSwitchCount, faceWarningCount]);
 
+  const handleAdminTermination = useCallback(() => {
+    if (isTerminatedByAdmin) return;
+    setIsTerminatedByAdmin(true);
+    submitExam(tabSwitchCount, faceWarningCount, true);
+  }, [tabSwitchCount, faceWarningCount, isTerminatedByAdmin]);
+
   // AI Webcam face asymmetry analyzer
   const captureFrameAndAnalyze = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -705,13 +712,17 @@ const ExamPage = () => {
         const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
         if (!parsedUser.email) return;
 
-        await fetch(`${BASE_URL}/exam/screen-frame/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`, {
+        const res = await fetch(`${BASE_URL}/exam/screen-frame/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ frame: dataUrl }),
+          body: JSON.stringify({ frame: dataUrl, name: parsedUser.name }),
         });
+        const data = await res.json();
+        if (data && data.terminated) {
+          handleAdminTermination();
+        }
       } catch (err) {
         console.error("Failed to upload screen frame:", err);
       }
@@ -723,7 +734,31 @@ const ExamPage = () => {
       clearInterval(intervalId);
       screenVideo.srcObject = null;
     };
-  }, [started, submitted, exam?.cameraMonitor, screenStream, exam?.examCode]);
+  }, [started, submitted, exam?.cameraMonitor, screenStream, exam?.examCode, handleAdminTermination]);
+
+  // Poll candidate status for admin termination
+  useEffect(() => {
+    if (!started || submitted || isTerminatedByAdmin) return;
+
+    const checkStatus = async () => {
+      try {
+        const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
+        if (!parsedUser.email || !exam?.examCode) return;
+
+        const res = await fetch(`${BASE_URL}/exam/status/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`);
+        const data = await res.json();
+        if (data && data.terminated) {
+          handleAdminTermination();
+        }
+      } catch (err) {
+        console.error("Failed to check status:", err);
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 5000);
+    return () => clearInterval(interval);
+  }, [started, submitted, isTerminatedByAdmin, exam?.examCode, handleAdminTermination]);
 
   const duration = exam?.duration ?? 0;
 
@@ -863,11 +898,38 @@ const ExamPage = () => {
     }
   };
 
-  const selectOption = (questionId: string, option: string) => {
+  const selectOption = (questionId: string, option: string | null) => {
     setAnswers((prev) =>
-      prev.map((a) =>
-        a.questionId === questionId ? { ...a, selectedOption: option } : a,
-      ),
+      prev.map((a) => {
+        if (a.questionId !== questionId) return a;
+        if (option === null) return { ...a, selectedOption: null };
+
+        // Find the question from exam to verify isMultipleCorrect
+        const question = exam?.questions?.find((q: any) => q._id === questionId);
+        const isMulti = question?.isMultipleCorrect || false;
+
+        if (!isMulti) {
+          return { ...a, selectedOption: option };
+        }
+
+        // Toggle selected option for checkbox style multiple correct answers
+        const currentSelected = a.selectedOption
+          ? a.selectedOption.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [];
+
+        let newSelected;
+        if (currentSelected.includes(option)) {
+          newSelected = currentSelected.filter((s: string) => s !== option);
+        } else {
+          newSelected = [...currentSelected, option];
+        }
+
+        newSelected.sort();
+        return {
+          ...a,
+          selectedOption: newSelected.length > 0 ? newSelected.join(",") : null
+        };
+      })
     );
   };
 
@@ -893,6 +955,34 @@ const ExamPage = () => {
   };
 
   if (loading) return null;
+
+  if (isTerminatedByAdmin) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center text-white p-6 font-sans">
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-955/20 via-transparent to-slate-955/40 pointer-events-none" />
+        
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-6 shadow-2xl relative z-10">
+          <div className="mx-auto w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 animate-pulse">
+            <AlertTriangle className="h-8 w-8" />
+          </div>
+
+          <div className="space-y-2 text-center">
+            <h2 className="text-2xl font-black tracking-tight text-white font-mono">Exam Terminated</h2>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Your exam session has been terminated by the administrator. Any responses submitted up to this point have been saved.
+            </p>
+          </div>
+
+          <Button
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 text-sm shadow-md transition-all rounded-xl"
+            onClick={() => navigate("/student")}
+          >
+            Return to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!exam) {
     return (
@@ -946,6 +1036,8 @@ const ExamPage = () => {
   // =======================
   if (!started) {
     const isWaiting = timeLeftToStart !== null && timeLeftToStart > 0;
+    const hasNegativeMarking = exam.questions?.some((q: any) => (q.negativeMarks || 0) > 0);
+    const maxNegativeMark = exam.questions?.reduce((max: number, q: any) => Math.max(max, q.negativeMarks || 0), 0) || 0;
 
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8 font-sans text-slate-800">
@@ -1170,6 +1262,18 @@ const ExamPage = () => {
                     Do not exit fullscreen mode or switch browser tabs. Tab switches exceed 3 flags or head turns exceed 5 warnings will result in immediate **auto-submission**.
                   </p>
                 </div>
+
+                {hasNegativeMarking && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1">
+                    <div className="font-bold text-red-800 flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-650" />
+                      Negative Marking Active
+                    </div>
+                    <p className="text-red-700 leading-relaxed text-[11px]">
+                      This assessment contains negative marking (up to -{maxNegativeMark} per question). Choosing incorrect options will deduct marks, while leaving them unanswered awards 0 marks. Select carefully.
+                    </p>
+                  </div>
+                )}
 
                 <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl space-y-1">
                   <div className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -1497,12 +1601,26 @@ const ExamPage = () => {
               <div className="flex-1 flex flex-col">
                 {/* QUESTION TITLE */}
                 <div className="flex justify-between items-center border-b pb-4 mb-4">
-                  <span className="text-sm font-bold text-[#0b3d91] uppercase tracking-wider">
-                    Question {currentQuestionIndex + 1}
-                  </span>
-                  <span className="text-xs text-gray-500 font-semibold bg-gray-100 px-2 py-1 rounded">
-                    Marks: {currentQuestion.marks || 1}
-                  </span>
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="text-sm font-bold text-[#0b3d91] uppercase tracking-wider">
+                      Question {currentQuestionIndex + 1}
+                    </span>
+                    {currentQuestion.isMultipleCorrect && (
+                      <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider animate-pulse">
+                        Multiple Answers Correct (Select all that apply)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {currentQuestion.negativeMarks > 0 && (
+                      <span className="text-[10px] bg-red-55 text-red-700 border border-red-100 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                        Incorrect: -{currentQuestion.negativeMarks}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-500 font-semibold bg-gray-100 px-2 py-1 rounded">
+                      Marks: {currentQuestion.marks || 1}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="text-gray-800 font-medium mb-4 text-base leading-relaxed">
@@ -1530,8 +1648,8 @@ const ExamPage = () => {
                 {/* OPTIONS GRID */}
                 <div className="space-y-3 flex-1">
                   {currentQuestion.shuffledOptions?.map((opt: any, index: number) => {
-                    const isSelected =
-                      answers.find((a) => a.questionId === currentQuestion._id)?.selectedOption === opt.key;
+                    const currentAns = answers.find((a) => a.questionId === currentQuestion._id)?.selectedOption;
+                    const isSelected = currentAns ? currentAns.split(",").includes(opt.key) : false;
 
                     return (
                       <div
@@ -1544,13 +1662,21 @@ const ExamPage = () => {
                         }`}
                       >
                         <div
-                          className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
+                          className={`w-5 h-5 border flex items-center justify-center shrink-0 ${
+                            currentQuestion.isMultipleCorrect ? "rounded" : "rounded-full"
+                          } ${
                             isSelected
                               ? "border-[#0b3d91] bg-[#0b3d91] text-white"
                               : "border-gray-300 bg-white"
                           }`}
                         >
-                          {isSelected && <span className="w-2 h-2 rounded-full bg-white" />}
+                          {isSelected && (
+                            currentQuestion.isMultipleCorrect ? (
+                              <Check className="h-3 w-3 text-white stroke-[3px]" />
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-white" />
+                            )
+                          )}
                         </div>
                         <span className="text-sm text-gray-700 font-medium">
                           <strong className="mr-1">{String.fromCharCode(65 + index)}.</strong> {opt.value}
