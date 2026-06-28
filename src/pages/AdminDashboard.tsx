@@ -42,16 +42,7 @@ const AdminDashboard = () => {
   const [monitorExam, setMonitorExam] = useState<any>(null);
   const [results, setResults] = useState<any[]>([]);
   const [loadingResults, setLoadingResults] = useState(false);
-
-  // Screen monitor modal states
-  const [viewingStudentScreen, setViewingStudentScreen] = useState<{ examCode: string; email: string; name: string } | null>(null);
-  const [liveScreenFrame, setLiveScreenFrame] = useState<string | null>(null);
-  const [screenOffline, setScreenOffline] = useState(false);
-
-  // Live Grid Proctoring states
-  const [activeViewTab, setActiveViewTab] = useState<"table" | "grid">("table");
-  const [liveScreenFramesGrid, setLiveScreenFramesGrid] = useState<{ [email: string]: { frame: string | null; isOffline: boolean } }>({});
-  const [zoomedStudent, setZoomedStudent] = useState<{ email: string; name: string; frame: string | null; isOffline: boolean } | null>(null);
+  const [activeCandidates, setActiveCandidates] = useState<{ [email: string]: { name: string; isOffline: boolean } }>({});
 
   // Edit exam modal state
   const [editingExam, setEditingExam] = useState<any>(null);
@@ -75,37 +66,6 @@ const AdminDashboard = () => {
     fetchExams();
   }, []);
 
-  // Poll screen frame updates from student screen stream
-  useEffect(() => {
-    if (!viewingStudentScreen) {
-      setLiveScreenFrame(null);
-      setScreenOffline(false);
-      return;
-    }
-
-    const fetchScreenFrame = async () => {
-      try {
-        const res = await fetch(`${BASE_URL}/exam/screen-frame/${viewingStudentScreen.examCode}/${encodeURIComponent(viewingStudentScreen.email)}`);
-        const data = await res.json();
-        if (res.ok) {
-          setLiveScreenFrame(data.frame);
-          setScreenOffline(data.isOffline);
-        }
-      } catch (err) {
-        console.error("Error fetching screen frame:", err);
-      }
-    };
-
-    fetchScreenFrame();
-    const intervalId = setInterval(fetchScreenFrame, 3000);
-
-    return () => clearInterval(intervalId);
-  }, [viewingStudentScreen]);
-
-  const handleViewScreen = (examCode: string, email: string, name: string) => {
-    setViewingStudentScreen({ examCode, email, name });
-  };
-
   const handleTerminateStudent = async (examCode: string, email: string) => {
     if (!window.confirm(`Are you sure you want to terminate this student's exam? This action will disqualify the candidate immediately.`)) {
       return;
@@ -123,19 +83,19 @@ const AdminDashboard = () => {
           const resultsRes = await fetch(`${BASE_URL}/exam/results/${monitorExam.examCode}`);
           const dbResults = resultsRes.ok ? await resultsRes.json() : [];
           
-          const framesRes = await fetch(`${BASE_URL}/exam/screen-frames/${monitorExam.examCode}`);
-          const activeFrames = framesRes.ok ? await framesRes.json() : {};
+          const candidatesRes = await fetch(`${BASE_URL}/exam/active-candidates/${monitorExam.examCode}`);
+          const activeCands = candidatesRes.ok ? await candidatesRes.json() : {};
           
-          setLiveScreenFramesGrid(activeFrames);
+          setActiveCandidates(activeCands);
           
           const dbEmails = new Set(dbResults.map((r: any) => r.studentEmail?.toLowerCase()));
-          const activeResults = Object.keys(activeFrames)
+          const activeResults = Object.keys(activeCands)
             .filter((email) => !dbEmails.has(email.toLowerCase()))
             .map((email) => {
-              const frameInfo = activeFrames[email];
+              const candInfo = activeCands[email];
               return {
                 _id: `active-${email}`,
-                studentName: frameInfo.name || "Candidate",
+                studentName: candInfo.name || "Candidate",
                 studentEmail: email,
                 score: "In Progress",
                 positiveMarks: 0,
@@ -144,7 +104,7 @@ const AdminDashboard = () => {
                 tabSwitchCount: 0,
                 faceWarningCount: 0,
                 isActive: true,
-                isOffline: frameInfo.isOffline,
+                isOffline: candInfo.isOffline,
                 submittedAt: null
               };
             });
@@ -160,10 +120,10 @@ const AdminDashboard = () => {
     }
   };
 
-  // Poll screen frames and DB results for ALL students in the active exam
+  // Poll active candidates list and DB results for ALL students in the active exam
   useEffect(() => {
     if (!monitorExam) {
-      setLiveScreenFramesGrid({});
+      setActiveCandidates({});
       return;
     }
 
@@ -172,21 +132,21 @@ const AdminDashboard = () => {
         const res = await fetch(`${BASE_URL}/exam/results/${monitorExam.examCode}`);
         const dbResults = res.ok ? await res.json() : [];
 
-        const framesRes = await fetch(`${BASE_URL}/exam/screen-frames/${monitorExam.examCode}`);
-        const activeFrames = framesRes.ok ? await framesRes.json() : {};
+        const candidatesRes = await fetch(`${BASE_URL}/exam/active-candidates/${monitorExam.examCode}`);
+        const activeCands = candidatesRes.ok ? await candidatesRes.json() : {};
 
-        setLiveScreenFramesGrid(activeFrames);
+        setActiveCandidates(activeCands);
 
-        // Merge DB results with active stream sessions
+        // Merge DB results with active student sessions
         const dbEmails = new Set(dbResults.map((r: any) => r.studentEmail?.toLowerCase()));
         
-        const activeResults = Object.keys(activeFrames)
+        const activeResults = Object.keys(activeCands)
           .filter((email) => !dbEmails.has(email.toLowerCase()))
           .map((email) => {
-            const frameInfo = activeFrames[email];
+            const candInfo = activeCands[email];
             return {
               _id: `active-${email}`,
-              studentName: frameInfo.name || "Candidate",
+              studentName: candInfo.name || "Candidate",
               studentEmail: email,
               score: "In Progress",
               positiveMarks: 0,
@@ -195,26 +155,12 @@ const AdminDashboard = () => {
               tabSwitchCount: 0,
               faceWarningCount: 0,
               isActive: true,
-              isOffline: frameInfo.isOffline,
+              isOffline: candInfo.isOffline,
               submittedAt: null
             };
           });
 
         setResults([...activeResults, ...dbResults]);
-
-        // Update zoomed student if active
-        setZoomedStudent((current) => {
-          if (!current) return null;
-          const updated = activeFrames[current.email.toLowerCase()];
-          if (updated) {
-            return {
-              ...current,
-              frame: updated.frame,
-              isOffline: updated.isOffline,
-            };
-          }
-          return current;
-        });
 
       } catch (err) {
         console.error("Error fetching updates:", err);
@@ -661,8 +607,7 @@ const AdminDashboard = () => {
 
       {/* ======================================= */}
       {/* 📊 MONITOR RESULTS MODAL */}
-      {/* ======================================= */}
-      <Dialog open={!!monitorExam} onOpenChange={(v) => { if (!v) { setMonitorExam(null); setActiveViewTab("table"); setLiveScreenFramesGrid({}); } }}>
+      {/* =================      <Dialog open={!!monitorExam} onOpenChange={(v) => { if (!v) { setMonitorExam(null); } }}>
         <DialogContent className="max-w-4xl w-full max-h-[85vh] overflow-y-auto rounded-2xl p-6">
           <DialogHeader className="flex flex-row justify-between items-center border-b border-slate-100 pb-4 mb-4">
             <div className="text-left">
@@ -682,28 +627,6 @@ const AdminDashboard = () => {
           </DialogHeader>
 
           <div className="pt-2">
-            {/* View Tab Toggle */}
-            {monitorExam?.cameraMonitor && results.length > 0 && (
-              <div className="flex gap-2 mb-4 border-b border-slate-100 pb-2">
-                <Button
-                  variant={activeViewTab === "table" ? "default" : "outline"}
-                  size="sm"
-                  className="h-8 text-xs font-bold px-4"
-                  onClick={() => setActiveViewTab("table")}
-                >
-                  Table View
-                </Button>
-                <Button
-                  variant={activeViewTab === "grid" ? "default" : "outline"}
-                  size="sm"
-                  className={`h-8 text-xs font-bold px-4 ${activeViewTab === "grid" ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
-                  onClick={() => setActiveViewTab("grid")}
-                >
-                  Live Grid Proctoring
-                </Button>
-              </div>
-            )}
-
             {loadingResults ? (
               <div className="text-center py-12 text-slate-400 text-xs">
                 <span className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin inline-block mr-2 align-middle" />
@@ -713,112 +636,6 @@ const AdminDashboard = () => {
               <div className="text-center py-12 text-slate-400">
                 <AlertTriangle className="mx-auto h-8 w-8 text-amber-500 mb-2" />
                 <p className="text-xs font-semibold">No submissions recorded for this assessment yet.</p>
-              </div>
-            ) : activeViewTab === "grid" ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {results.map((r) => {
-                  const studentData = liveScreenFramesGrid[r.studentEmail?.toLowerCase()];
-                  const frame = studentData?.frame;
-                  const isOffline = studentData ? studentData.isOffline : true;
-
-                  return (
-                    <div
-                      key={r._id}
-                      className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col justify-between text-left text-white"
-                    >
-                      {/* Card Header info */}
-                      <div className="p-3 bg-slate-950 border-b border-slate-850 flex items-center justify-between">
-                        <div>
-                          <div className="font-bold text-xs text-slate-100 truncate max-w-[150px]">{r.studentName}</div>
-                          <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{r.studentEmail}</div>
-                        </div>
-                        <div>
-                          {isOffline ? (
-                            <Badge className="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-bold py-0.5 px-1.5 uppercase tracking-wider">
-                              Offline
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-bold py-0.5 px-1.5 uppercase tracking-wider animate-pulse">
-                              Live
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Live screen feed container */}
-                      <div
-                        className="bg-slate-950 aspect-video flex items-center justify-center border-b border-slate-850 overflow-hidden relative group cursor-pointer"
-                        onClick={() => {
-                          if (frame) {
-                            setZoomedStudent({
-                              email: r.studentEmail,
-                              name: r.studentName,
-                              frame,
-                              isOffline
-                            });
-                          }
-                        }}
-                      >
-                        {frame ? (
-                          <>
-                            <img
-                              src={frame}
-                              alt={`${r.studentName} Screen Feed`}
-                              className="w-full h-full object-contain"
-                            />
-                            {/* Hover overlay indicator */}
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-xs font-bold text-white uppercase tracking-wider">
-                              <Search className="h-4 w-4 mr-1.5" /> Click to Zoom
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-[10px] text-slate-500 flex flex-col items-center gap-1 font-semibold">
-                            <span className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
-                            Awaiting Stream...
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Card Footer proctor indicators */}
-                      <div className="p-3 bg-slate-950 text-[10px] space-y-1">
-                        <div className="flex justify-between items-center text-[10px] text-slate-400">
-                          <span>Warnings (Tab/Face):</span>
-                          <span className="font-bold font-mono text-slate-200">
-                            {r.isActive ? "-" : `${r.tabSwitchCount || 0} / ${r.faceWarningCount || 0}`}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] text-slate-400">
-                          <span>Status Verdict:</span>
-                          <span>
-                            {r.isActive ? (
-                              <span className="text-blue-400 font-bold uppercase animate-pulse">Writing</span>
-                            ) : r.terminated ? (
-                              <span className="text-red-400 font-bold uppercase">Disqualified</span>
-                            ) : (r.tabSwitched || (r.faceWarningCount && r.faceWarningCount > 0)) ? (
-                              <span className="text-amber-400 font-bold uppercase">Warnings Flagged</span>
-                            ) : (
-                              <span className="text-emerald-400 font-bold uppercase">Clean</span>
-                            )}
-                          </span>
-                        </div>
-                        {r.isActive && (
-                          <div className="pt-2 border-t border-slate-800/80 flex justify-end">
-                            <Button
-                              variant="destructive"
-                              className="h-6 px-2 text-[9px] gap-1 font-bold bg-red-600 hover:bg-red-750 text-white rounded-lg flex items-center shadow-sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTerminateStudent(monitorExam.examCode, r.studentEmail);
-                              }}
-                            >
-                              <AlertTriangle className="h-2.5 w-2.5" /> Terminate Session
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             ) : (
               <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -839,7 +656,12 @@ const AdminDashboard = () => {
                   <tbody className="divide-y divide-slate-100">
                     {results.map((r) => (
                       <tr key={r._id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-4 py-3 font-bold text-slate-800">{r.studentName}</td>
+                        <td className="px-4 py-3 font-bold text-slate-800 flex items-center gap-2">
+                          {r.studentName}
+                          {r.isActive && (
+                            <span className={`w-2 h-2 rounded-full ${r.isOffline ? "bg-red-400" : "bg-emerald-500 animate-pulse"}`} title={r.isOffline ? "Offline" : "Active Online"} />
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-slate-500">{r.studentEmail || "N/A"}</td>
                         <td className="px-4 py-3 text-center font-extrabold text-blue-600">
                           {r.isActive ? (
@@ -876,7 +698,7 @@ const AdminDashboard = () => {
                             </Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-slate-400">
+                        <td className="px-4 py-3 text-slate-400 text-right">
                           {r.isActive ? (
                             <span className="text-emerald-600 font-bold animate-pulse">Active Now</span>
                           ) : r.submittedAt ? (
@@ -887,16 +709,6 @@ const AdminDashboard = () => {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end gap-1.5">
-                            {monitorExam?.cameraMonitor && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-[10px] gap-1 font-bold text-blue-600 border-blue-200 hover:bg-blue-50"
-                                onClick={() => handleViewScreen(monitorExam.examCode, r.studentEmail, r.studentName)}
-                              >
-                                <Eye className="h-3 w-3" /> View Screen
-                              </Button>
-                            )}
                             {r.isActive && (
                               <Button
                                 variant="destructive"
@@ -915,94 +727,6 @@ const AdminDashboard = () => {
                 </table>
               </div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ======================================= */}
-      {/* 🖥️ LIVE SCREEN PROCTOR MONITOR MODAL */}
-      {/* ======================================= */}
-      <Dialog open={!!viewingStudentScreen} onOpenChange={(v) => !v && setViewingStudentScreen(null)}>
-        <DialogContent className="max-w-xl w-full rounded-2xl p-6 bg-slate-955 text-white border border-slate-800">
-          <DialogHeader className="border-b border-slate-900 pb-3 mb-4 flex flex-row justify-between items-center">
-            <div className="text-left">
-              <DialogTitle className="text-sm font-bold tracking-tight text-white uppercase">Live Screen Proctor Feed</DialogTitle>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Candidate: <span className="font-bold text-slate-200">{viewingStudentScreen?.name}</span> ({viewingStudentScreen?.email})
-              </p>
-            </div>
-            {screenOffline ? (
-              <Badge className="bg-red-500/10 text-red-400 border border-red-500/25 text-[9px] font-bold rounded py-0.5 px-2 uppercase tracking-wider">
-                Offline / Paused
-              </Badge>
-            ) : (
-              <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[9px] font-bold rounded py-0.5 px-2 uppercase tracking-wider animate-pulse flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Live Streaming
-              </Badge>
-            )}
-          </DialogHeader>
-
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 overflow-hidden relative shadow-2xl flex items-center justify-center">
-              {liveScreenFrame ? (
-                <img
-                  src={liveScreenFrame}
-                  alt="Candidate Live Screen Feed"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="text-slate-500 text-xs flex flex-col items-center gap-2">
-                  <span className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  Awaiting screen capture handshake...
-                </div>
-              )}
-            </div>
-            
-            <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-              Screen recording frame updates dynamically every 3 seconds. The proctor session complies with candidate screen privacy regulations.
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ======================================= */}
-      {/* 🖥️ LIVE SCREEN ZOOM VIEW MODAL */}
-      {/* ======================================= */}
-      <Dialog open={!!zoomedStudent} onOpenChange={(v) => !v && setZoomedStudent(null)}>
-        <DialogContent className="max-w-4xl w-full rounded-2xl p-6 bg-slate-955 text-white border border-slate-800">
-          <DialogHeader className="border-b border-slate-900 pb-3 mb-4 flex flex-row justify-between items-center">
-            <div className="text-left">
-              <DialogTitle className="text-sm font-bold tracking-tight text-white uppercase">ZOOM FEED MONITOR</DialogTitle>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Candidate: <span className="font-bold text-slate-200">{zoomedStudent?.name}</span> ({zoomedStudent?.email})
-              </p>
-            </div>
-            {zoomedStudent?.isOffline ? (
-              <Badge className="bg-red-500/10 text-red-400 border border-red-500/25 text-[9px] font-bold rounded py-0.5 px-2 uppercase tracking-wider">
-                Offline
-              </Badge>
-            ) : (
-              <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[9px] font-bold rounded py-0.5 px-2 uppercase tracking-wider animate-pulse flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Streaming Live
-              </Badge>
-            )}
-          </DialogHeader>
-
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 overflow-hidden relative shadow-2xl flex items-center justify-center">
-              {zoomedStudent?.frame ? (
-                <img
-                  src={zoomedStudent.frame}
-                  alt="Candidate Live Screen Zoomed Feed"
-                  className="w-full h-full object-contain"
-                />
-              ) : (
-                <div className="text-slate-500 text-xs flex flex-col items-center gap-2">
-                  <span className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  Connecting feed...
-                </div>
-              )}
-            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1081,17 +805,8 @@ const AdminDashboard = () => {
               <Label className="text-xs font-bold text-slate-700">End Time</Label>
               <Input type="datetime-local" value={cloneEndTime} onChange={(e) => setCloneEndTime(e.target.value)} className="bg-slate-50 border-slate-200 text-xs h-10" />
             </div>
-            <div className="flex items-center space-x-2.5 py-1">
-              <input
-                type="checkbox"
-                id="cloneCameraMonitor"
-                className="h-4.5 w-4.5 text-blue-600 rounded border-slate-350"
-                checked={cloneCameraMonitor}
-                onChange={(e) => setCloneCameraMonitor(e.target.checked)}
-              />
-              <Label htmlFor="cloneCameraMonitor" className="cursor-pointer font-bold text-slate-750 text-xs select-none leading-tight">
-                Enable AI proctor webcam check for this clone
-              </Label>
+            <div className="flex items-center space-x-2.5 py-1 text-slate-400 text-xs">
+              <span>Standard exam lockouts and browser restrictions will be set.</span>
             </div>
 
             <Button

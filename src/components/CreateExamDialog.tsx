@@ -332,18 +332,9 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
           {/* Card 3: Security & Proctoring */}
           <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl text-left">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">3. Security Enforcements</h3>
-            <div className="flex items-center space-x-3 py-1">
-              <input
-                type="checkbox"
-                id="cameraMonitor"
-                className="h-4.5 w-4.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                checked={cameraMonitor}
-                onChange={(e) => setCameraMonitor(e.target.checked)}
-              />
-              <Label htmlFor="cameraMonitor" className="cursor-pointer font-semibold text-slate-700 text-xs select-none leading-tight">
-                Enable AI webcam proctoring check (face turns & coverage alerts)
-              </Label>
-            </div>
+            <p className="text-[11px] text-slate-500">
+              Standard secure fullscreen browser security and copy/paste/right-click block lockouts are active for this assessment drive.
+            </p>
           </div>
 
           {/* Card 4: Questions Import */}

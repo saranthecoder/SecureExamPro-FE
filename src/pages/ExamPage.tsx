@@ -297,6 +297,9 @@ const ExamPage = () => {
           return;
         }
 
+        // Force cameraMonitor to false
+        data.cameraMonitor = false;
+
         // Check if not started yet (Lobby flow)
         if (data.notStartedYet) {
           setExam(data);
@@ -674,90 +677,35 @@ const ExamPage = () => {
     }
   }, [handleFaceWarning]);
 
-  // Run webcam frame analysis loop during the exam
+  // Run active candidate heartbeat loop during the exam (and poll for admin termination status)
   useEffect(() => {
-    if (!started || submitted || !exam?.cameraMonitor || !stream) return;
+    if (!started || submitted || isTerminatedByAdmin) return;
 
-    const intervalId = setInterval(() => {
-      captureFrameAndAnalyze();
-    }, 1000);
-
-    return () => clearInterval(intervalId);
-  }, [started, submitted, exam?.cameraMonitor, stream, captureFrameAndAnalyze]);
-
-  // Run screen capture frame streaming loop during the exam
-  useEffect(() => {
-    if (!started || submitted || !exam?.cameraMonitor || !screenStream) return;
-
-    const screenVideo = document.createElement("video");
-    screenVideo.srcObject = screenStream;
-    screenVideo.muted = true;
-    screenVideo.playsInline = true;
-    screenVideo.play().catch(() => {});
-
-    const screenCanvas = document.createElement("canvas");
-    const ctx = screenCanvas.getContext("2d");
-
-    const uploadFrame = async () => {
-      if (!ctx || screenVideo.paused || screenVideo.ended) return;
+    const sendHeartbeat = async () => {
       try {
-        const width = 320;
-        const height = (screenVideo.videoHeight / screenVideo.videoWidth) * width || 180;
-        screenCanvas.width = width;
-        screenCanvas.height = height;
-
-        ctx.drawImage(screenVideo, 0, 0, width, height);
-        const dataUrl = screenCanvas.toDataURL("image/jpeg", 0.3);
-
         const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
-        if (!parsedUser.email) return;
+        if (!parsedUser.email || !exam?.examCode) return;
 
-        const res = await fetch(`${BASE_URL}/exam/screen-frame/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`, {
+        const res = await fetch(`${BASE_URL}/exam/heartbeat/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ frame: dataUrl, name: parsedUser.name }),
+          body: JSON.stringify({ name: parsedUser.name }),
         });
         const data = await res.json();
         if (data && data.terminated) {
           handleAdminTermination();
         }
       } catch (err) {
-        console.error("Failed to upload screen frame:", err);
+        console.error("Failed to send active status heartbeat:", err);
       }
     };
 
-    const intervalId = setInterval(uploadFrame, 5000);
+    sendHeartbeat();
+    const intervalId = setInterval(sendHeartbeat, 5000);
 
-    return () => {
-      clearInterval(intervalId);
-      screenVideo.srcObject = null;
-    };
-  }, [started, submitted, exam?.cameraMonitor, screenStream, exam?.examCode, handleAdminTermination]);
-
-  // Poll candidate status for admin termination
-  useEffect(() => {
-    if (!started || submitted || isTerminatedByAdmin) return;
-
-    const checkStatus = async () => {
-      try {
-        const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
-        if (!parsedUser.email || !exam?.examCode) return;
-
-        const res = await fetch(`${BASE_URL}/exam/status/${exam.examCode}/${encodeURIComponent(parsedUser.email)}`);
-        const data = await res.json();
-        if (data && data.terminated) {
-          handleAdminTermination();
-        }
-      } catch (err) {
-        console.error("Failed to check status:", err);
-      }
-    };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 5000);
-    return () => clearInterval(interval);
+    return () => clearInterval(intervalId);
   }, [started, submitted, isTerminatedByAdmin, exam?.examCode, handleAdminTermination]);
 
   const duration = exam?.duration ?? 0;
@@ -808,6 +756,9 @@ const ExamPage = () => {
         alert(data.message || "Failed to start. Exam may not be active yet.");
         return;
       }
+
+      // Force cameraMonitor to false
+      data.cameraMonitor = false;
 
       // 🔀 Group & Shuffle Questions by Section
       const predefinedOrder = [
@@ -1116,105 +1067,50 @@ const ExamPage = () => {
 
         <div className="w-full max-w-5xl bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-2xl grid lg:grid-cols-12 items-stretch">
           
-          {/* Left Column: Identity Scan & Checks */}
+          {/* Left Column: Security & Guidelines */}
           <div className="lg:col-span-5 bg-slate-950 text-white p-6 md:p-8 flex flex-col justify-between space-y-6 relative">
             <div className="absolute inset-0 bg-gradient-to-b from-blue-950/20 via-transparent to-slate-950/40 pointer-events-none" />
             
             <div className="relative z-10 space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-3.5 py-1 text-xs text-blue-400 font-semibold uppercase tracking-wider">
-                <Video className="h-3.5 w-3.5" />
-                Identity Verification
+                <Shield className="h-3.5 w-3.5" />
+                Assessment Security
               </div>
-              <h2 className="text-xl font-bold tracking-tight">Camera Proctor Frame</h2>
+              <h2 className="text-xl font-bold tracking-tight">Lockdown Mode</h2>
               <p className="text-slate-400 text-xs leading-relaxed">
-                The webcam feed analyzes facial features to confirm your identity against the registered profile.
+                This environment enforces academic integrity. Exiting fullscreen or navigating away will flag security violations.
               </p>
             </div>
 
-            {/* Webcam Preview Box */}
-            <div className="relative z-10 w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 overflow-hidden shadow-2xl flex items-center justify-center max-w-sm mx-auto">
-              {exam.cameraMonitor && (
-                <>
-                  <video
-                    ref={setVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover scale-x-[-1]"
-                  />
-
-                  {/* Scanning Animation lines & Target boxes */}
-                  {faceVerificationStatus === 'scanning' && (
-                    <>
-                      <div className="absolute inset-x-8 top-1/4 bottom-1/4 border-2 border-dashed border-blue-500/30 rounded-full animate-pulse flex items-center justify-center">
-                        <div className="w-4 h-4 border-t-2 border-l-2 border-blue-400 absolute top-0 left-0" />
-                        <div className="w-4 h-4 border-t-2 border-r-2 border-blue-400 absolute top-0 right-0" />
-                        <div className="w-4 h-4 border-b-2 border-l-2 border-blue-400 absolute bottom-0 left-0" />
-                        <div className="w-4 h-4 border-b-2 border-r-2 border-blue-400 absolute bottom-0 right-0" />
-                      </div>
-                      <div className="absolute inset-x-0 h-0.5 bg-blue-500 shadow-[0_0_10px_#3b82f6] top-0 animate-[scan_2s_ease-in-out_infinite]" />
-                    </>
-                  )}
-
-                  {/* Dynamic Scanner HUD Overlays */}
-                  <div className="absolute inset-0 bg-black/35 backdrop-blur-[0.5px] flex items-center justify-center">
-                    {faceVerificationStatus === 'scanning' && (
-                      <div className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-slate-900/90 text-blue-400 border border-blue-500/20 shadow-md animate-pulse flex items-center gap-1.5 uppercase">
-                        <RefreshCw className="h-3 w-3 animate-spin" /> Scanning Face...
-                      </div>
-                    )}
-                    {faceVerificationStatus === 'success' && (
-                      <div className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-slate-900/90 text-emerald-400 border border-emerald-500/30 shadow-md flex items-center gap-1.5 uppercase">
-                        <Check className="h-3.5 w-3.5 text-emerald-400" /> Identity Verified
-                      </div>
-                    )}
-                    {faceVerificationStatus === 'failed' && (
-                      <div className="text-[10px] font-bold px-3 py-1.5 rounded-lg bg-slate-900/90 text-red-400 border border-red-500/30 shadow-md flex items-center gap-1.5 uppercase">
-                        <AlertTriangle className="h-3.5 w-3.5 text-red-400 animate-bounce" /> Scan Unverified
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Top status indicator label */}
-              <div className="absolute top-2 left-2 bg-slate-900/80 px-2 py-0.5 rounded text-[9px] font-bold tracking-wider uppercase text-slate-300 flex items-center gap-1">
-                <span className={`w-1.5 h-1.5 rounded-full ${stream ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
-                {stream ? "Feed Connected" : "Feed Missing"}
-              </div>
+            {/* Shield Logo Graphic */}
+            <div className="relative z-10 w-full aspect-video rounded-xl bg-slate-900 border border-slate-800 overflow-hidden shadow-2xl flex flex-col items-center justify-center max-w-sm mx-auto p-4 space-y-2">
+              <Shield className="h-12 w-12 text-blue-500 animate-pulse" />
+              <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Secure Exam Portal</div>
+              <span className="text-[9px] text-slate-500 font-mono">Ver 2.1.0</span>
             </div>
 
             {/* Checklist items */}
             <div className="relative z-10 space-y-2 pt-2 border-t border-slate-900">
               <div className="flex items-center justify-between text-xs py-1 border-b border-slate-900/50">
                 <span className="text-slate-400 flex items-center gap-2">
-                  <Check className={`h-4 w-4 ${stream ? "text-emerald-400" : "text-slate-600"}`} />
-                  Camera Connection
+                  <Check className="h-4 w-4 text-emerald-400" />
+                  Fullscreen Lockout
                 </span>
-                <span className={`font-semibold ${stream ? "text-slate-200" : "text-slate-500"}`}>{stream ? "Active" : "Awaiting"}</span>
+                <span className="text-slate-200 font-semibold">Active</span>
               </div>
               <div className="flex items-center justify-between text-xs py-1 border-b border-slate-900/50">
-                <span className="text-slate-400 flex items-center gap-2">
-                  <Check className={`h-4 w-4 ${faceRecognized ? "text-emerald-400" : "text-slate-600"}`} />
-                  Identity Check
-                </span>
-                <span className={`font-semibold ${faceRecognized ? "text-slate-200" : "text-slate-500"}`}>{faceRecognized ? "Completed" : "Pending"}</span>
-              </div>
-              {exam?.cameraMonitor && (
-                <div className="flex items-center justify-between text-xs py-1 border-b border-slate-900/50">
-                  <span className="text-slate-400 flex items-center gap-2">
-                    <Check className={`h-4 w-4 ${screenShared ? "text-emerald-400" : "text-slate-600"}`} />
-                    Screen Share Access
-                  </span>
-                  <span className={`font-semibold ${screenShared ? "text-slate-200" : "text-slate-500"}`}>{screenShared ? "Active" : "Awaiting"}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between text-xs py-1">
                 <span className="text-slate-400 flex items-center gap-2">
                   <Check className="h-4 w-4 text-emerald-400" />
                   Security Lockouts
                 </span>
                 <span className="text-slate-200 font-semibold">Enabled</span>
+              </div>
+              <div className="flex items-center justify-between text-xs py-1">
+                <span className="text-slate-400 flex items-center gap-2">
+                  <Check className={`h-4 w-4 ${isOnline ? "text-emerald-400" : "text-red-500"}`} />
+                  Network Connection
+                </span>
+                <span className={`font-semibold ${isOnline ? "text-emerald-400" : "text-red-500"}`}>{isOnline ? "Online" : "Offline"}</span>
               </div>
             </div>
           </div>
