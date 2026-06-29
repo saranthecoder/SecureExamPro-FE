@@ -252,8 +252,8 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
         className="
           fixed left-1/2 top-1/2
           -translate-x-1/2 -translate-y-1/2
-          max-w-lg w-full
-          max-h-[85vh] overflow-y-auto
+          max-w-[96vw] w-full
+          max-h-[92vh] h-[92vh] flex flex-col
           rounded-2xl border border-slate-200 shadow-2xl p-6
         "
       >
@@ -263,12 +263,12 @@ const CreateExamDialog = ({ onExamCreated }: CreateExamDialogProps) => {
             <Loader />
           </div>
         )}
-        <DialogHeader className="border-b border-slate-100 pb-4 mb-4">
+        <DialogHeader className="border-b border-slate-100 pb-4 mb-4 shrink-0">
           <DialogTitle className="text-xl font-bold text-slate-900">Create Placement Assessment</DialogTitle>
         </DialogHeader>
 
         <div
-          className={`space-y-5 ${loading ? "pointer-events-none opacity-40" : ""}`}
+          className={`space-y-5 flex-grow overflow-auto min-h-0 ${loading ? "pointer-events-none opacity-40" : ""}`}
         >
           {/* Card 1: Basic Information */}
           <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-xl space-y-3 text-left">

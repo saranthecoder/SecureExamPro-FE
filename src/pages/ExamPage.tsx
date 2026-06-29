@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Swal from "sweetalert2";
 import { useParams, useNavigate } from "react-router-dom";
 import { useExamSecurity } from "@/hooks/useExamSecurity";
 import { useExamTimer } from "@/hooks/useExamTimer";
@@ -38,6 +39,7 @@ const ExamPage = () => {
   const [answers, setAnswers] = useState<any[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [started, setStarted] = useState(false);
 
@@ -72,6 +74,149 @@ const ExamPage = () => {
     }
   }, [stream]);
 
+  //===================
+  //Shuffler
+  //===================
+  const shuffleArray = (array: any[]) => {
+    const arr = [...array]; // avoid mutating original
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  };
+
+  // 🔥 FETCH EXAM FROM BACKEND
+  const fetchExam = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/exam/${code}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        Swal.fire({
+          title: "Unavailable",
+          text: data.message || "Exam unavailable",
+          icon: "error",
+          confirmButtonColor: "#3b82f6"
+        });
+        navigate("/student");
+        return;
+      }
+
+      // Force cameraMonitor to false
+      data.cameraMonitor = false;
+
+      // Check if not started yet (Lobby flow)
+      if (data.notStartedYet) {
+        setExam(data);
+        setLobbyActive(true);
+        const startMs = new Date(data.startTime).getTime();
+        const calculateTimeLeft = () => {
+          const diff = startMs - Date.now();
+          return diff > 0 ? Math.floor(diff / 1000) : 0;
+        };
+        setTimeLeftToStart(calculateTimeLeft());
+        return;
+      }
+
+      // 🔀 Group & Shuffle Questions by Section (Direct Start flow)
+      const predefinedOrder = [
+        "Quantitative Aptitude",
+        "Logical Reasoning",
+        "Verbal Ability",
+        "Programming Logic / Pseudocode",
+        "Data Structures",
+      ];
+
+      const grouped: { [key: string]: any[] } = {};
+      data.questions.forEach((q: any) => {
+        const sec = q.section || "General";
+        if (!grouped[sec]) {
+          grouped[sec] = [];
+        }
+        grouped[sec].push(q);
+      });
+
+      const sectionNames = Object.keys(grouped).sort((a, b) => {
+        const idxA = predefinedOrder.findIndex((p) =>
+          a.toLowerCase().includes(p.toLowerCase()),
+        );
+        const idxB = predefinedOrder.findIndex((p) =>
+          b.toLowerCase().includes(p.toLowerCase()),
+        );
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      const finalSections = sectionNames.map((name) => {
+        const shuffledSectionQuestions = shuffleArray(grouped[name]).map(
+          (q: any) => {
+            const optionsArray = Object.entries(q.options).map(
+              ([key, value]) => ({
+                key,
+                value,
+              }),
+            );
+            const shuffledOptions = shuffleArray(optionsArray);
+            return { ...q, shuffledOptions };
+          },
+        );
+        return {
+          name,
+          questions: shuffledSectionQuestions,
+        };
+      });
+
+      setSections(finalSections);
+
+      const allQuestions = finalSections.flatMap((s) => s.questions);
+      setExam({
+        ...data,
+        questions: allQuestions,
+      });
+
+      const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      const cacheKey = `answers_${data.examCode}_${parsedUser.email}`;
+      const cached = localStorage.getItem(cacheKey);
+
+      if (cached) {
+        try {
+          setAnswers(JSON.parse(cached));
+        } catch {
+          const initialAnswers = allQuestions.map((q: any) => ({
+            questionId: q._id,
+            selectedOption: null,
+          }));
+          setAnswers(initialAnswers);
+        }
+      } else {
+        const initialAnswers = allQuestions.map((q: any) => ({
+          questionId: q._id,
+          selectedOption: null,
+        }));
+        setAnswers(initialAnswers);
+      }
+    } catch (err) {
+      Swal.fire({
+        title: "Server Error",
+        text: "Server error occurred while loading this exam drive.",
+        icon: "error",
+        confirmButtonColor: "#3b82f6"
+      });
+      navigate("/student");
+    } finally {
+      setLoading(false);
+    }
+  }, [code, navigate]);
+
+  useEffect(() => {
+    if (code) {
+      fetchExam();
+    }
+  }, [code, fetchExam]);
+
   // Screen sharing request handler
   const handleShareScreen = async () => {
     try {
@@ -98,7 +243,12 @@ const ExamPage = () => {
       console.error("Screen share access denied:", err);
       setScreenShared(false);
       setScreenStatus('failed');
-      alert("You must share your entire screen to write this exam.");
+      Swal.fire({
+        title: "Screen Share Required",
+        text: "You must share your entire screen to write this exam.",
+        icon: "warning",
+        confirmButtonColor: "#3b82f6"
+      });
     }
   };
 
@@ -133,6 +283,7 @@ const ExamPage = () => {
     if (timeLeftToStart <= 0) {
       setShowReadyPopup(true);
       setLobbyActive(false);
+      fetchExam(); // Fetch the full questions automatically once lobby ends!
       return;
     }
 
@@ -143,7 +294,7 @@ const ExamPage = () => {
     }, 1000);
 
     return () => clearTimeout(timerId);
-  }, [lobbyActive, timeLeftToStart, exam?.startTime]);
+  }, [lobbyActive, timeLeftToStart, exam?.startTime, fetchExam]);
 
   const formatTimeLeft = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -163,7 +314,12 @@ const ExamPage = () => {
         })
         .catch((err) => {
           console.error("Camera access denied:", err);
-          alert("This exam requires camera permissions. Please grant camera access to write the exam.");
+          Swal.fire({
+            title: "Camera Access Required",
+            text: "This exam requires camera permissions. Please grant camera access to write the exam.",
+            icon: "warning",
+            confirmButtonColor: "#3b82f6"
+          });
         });
     }
   }, [exam?.cameraMonitor, started, submitted]);
@@ -272,136 +428,7 @@ const ExamPage = () => {
 
 
 
-   //===================
-  //Shuffler
-  //===================
-  const shuffleArray = (array: any[]) => {
-    const arr = [...array]; // avoid mutating original
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  };
 
-  // 🔥 FETCH EXAM FROM BACKEND
-  useEffect(() => {
-    const fetchExam = async () => {
-      try {
-        const res = await fetch(`${BASE_URL}/exam/${code}`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          alert(data.message || "Exam unavailable");
-          navigate("/student");
-          return;
-        }
-
-        // Force cameraMonitor to false
-        data.cameraMonitor = false;
-
-        // Check if not started yet (Lobby flow)
-        if (data.notStartedYet) {
-          setExam(data);
-          setLobbyActive(true);
-          const startMs = new Date(data.startTime).getTime();
-          const calculateTimeLeft = () => {
-            const diff = startMs - Date.now();
-            return diff > 0 ? Math.floor(diff / 1000) : 0;
-          };
-          setTimeLeftToStart(calculateTimeLeft());
-          return;
-        }
-
-        // 🔀 Group & Shuffle Questions by Section (Direct Start flow)
-        const predefinedOrder = [
-          "Quantitative Aptitude",
-          "Logical Reasoning",
-          "Verbal Ability",
-          "Programming Logic / Pseudocode",
-          "Data Structures",
-        ];
-
-        const grouped: { [key: string]: any[] } = {};
-        data.questions.forEach((q: any) => {
-          const sec = q.section || "General";
-          if (!grouped[sec]) {
-            grouped[sec] = [];
-          }
-          grouped[sec].push(q);
-        });
-
-        const sectionNames = Object.keys(grouped).sort((a, b) => {
-          const idxA = predefinedOrder.findIndex((p) =>
-            a.toLowerCase().includes(p.toLowerCase()),
-          );
-          const idxB = predefinedOrder.findIndex((p) =>
-            b.toLowerCase().includes(p.toLowerCase()),
-          );
-          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-          if (idxA !== -1) return -1;
-          if (idxB !== -1) return 1;
-          return a.localeCompare(b);
-        });
-
-        const finalSections = sectionNames.map((name) => {
-          const shuffledSectionQuestions = shuffleArray(grouped[name]).map(
-            (q: any) => {
-              const optionsArray = Object.entries(q.options).map(
-                ([key, value]) => ({
-                  key,
-                  value,
-                }),
-              );
-              const shuffledOptions = shuffleArray(optionsArray);
-              return { ...q, shuffledOptions };
-            },
-          );
-          return {
-            name,
-            questions: shuffledSectionQuestions,
-          };
-        });
-
-        setSections(finalSections);
-
-        const allQuestions = finalSections.flatMap((s) => s.questions);
-        setExam({
-          ...data,
-          questions: allQuestions,
-        });
-
-        const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
-        const cacheKey = `answers_${data.examCode}_${parsedUser.email}`;
-        const cached = localStorage.getItem(cacheKey);
-
-        if (cached) {
-          try {
-            setAnswers(JSON.parse(cached));
-          } catch {
-            const initialAnswers = allQuestions.map((q: any) => ({
-              questionId: q._id,
-              selectedOption: null,
-            }));
-            setAnswers(initialAnswers);
-          }
-        } else {
-          const initialAnswers = allQuestions.map((q: any) => ({
-            questionId: q._id,
-            selectedOption: null,
-          }));
-          setAnswers(initialAnswers);
-        }
-      } catch (err) {
-        alert("Server error");
-        navigate("/student");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (code) fetchExam();
-  }, [code, navigate]);
 
   // Automatically write current answers to localStorage on change
   useEffect(() => {
@@ -415,7 +442,7 @@ const ExamPage = () => {
   // Background Sync function for offline submission
   const syncPendingSubmission = useCallback(async () => {
     const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!exam?.examCode || !parsedUser.email || offlineSyncPending) return;
+    if (!exam?.examCode || !parsedUser.email || offlineSyncPending || submitting || submitLock.current) return;
 
     const pendingKey = `pending_submission_${exam.examCode}_${parsedUser.email}`;
     const pendingData = localStorage.getItem(pendingKey);
@@ -484,7 +511,8 @@ const ExamPage = () => {
     finalFaceWarningCount: number = 0,
     faceTurnTerminated: boolean = false
   ) => {
-    if (submitting) return; // prevent double submit
+    if (submitting || submitLock.current || offlineSyncPending) return; // prevent double submit
+    submitLock.current = true;
 
     const parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
     const payload = {
@@ -516,8 +544,14 @@ const ExamPage = () => {
 
       if (!res.ok) {
         if (navigator.onLine) {
-          alert(data.message || "Submission failed");
+          Swal.fire({
+            title: "Submission Failed",
+            text: data.message || "Submission failed",
+            icon: "error",
+            confirmButtonColor: "#3b82f6"
+          });
           setSubmitting(false);
+          submitLock.current = false;
           return;
         }
       }
@@ -532,12 +566,23 @@ const ExamPage = () => {
     } catch (error) {
       console.error("Network submission error:", error);
       if (!navigator.onLine) {
-        alert("You are currently offline. Your exam progress has been safely saved locally. Keep this tab open—we will automatically synchronize your answers once your internet connection is restored.");
+        Swal.fire({
+          title: "Offline Save",
+          text: "You are currently offline. Your exam progress has been safely saved locally. Keep this tab open—we will automatically synchronize your answers once your internet connection is restored.",
+          icon: "info",
+          confirmButtonColor: "#3b82f6"
+        });
         setSubmitted(true);
         setShowConfirm(false);
         document.exitFullscreen?.().catch(() => {});
       } else {
-        alert("Submission failed due to a server error. We saved a local copy of your response; please retry.");
+        Swal.fire({
+          title: "Server Error",
+          text: "Submission failed due to a server error. We saved a local copy of your response; please retry.",
+          icon: "error",
+          confirmButtonColor: "#3b82f6"
+        });
+        submitLock.current = false;
       }
     } finally {
       setSubmitting(false);
@@ -726,12 +771,22 @@ const ExamPage = () => {
 
   const handleStart = async () => {
     if (timeLeftToStart !== null && timeLeftToStart > 0) {
-      alert("Please wait for the lobby timer to finish.");
+      Swal.fire({
+        title: "Lobby Active",
+        text: "Please wait for the lobby timer to finish.",
+        icon: "info",
+        confirmButtonColor: "#3b82f6"
+      });
       return;
     }
 
     if (exam?.cameraMonitor && !stream) {
-      alert("Camera stream is required. Please grant camera permission to start.");
+      Swal.fire({
+        title: "Camera Perms Required",
+        text: "Camera stream is required. Please grant camera permission to start.",
+        icon: "warning",
+        confirmButtonColor: "#3b82f6"
+      });
       return;
     }
 
@@ -753,7 +808,12 @@ const ExamPage = () => {
       const data = await res.json();
 
       if (!res.ok || data.notStartedYet) {
-        alert(data.message || "Failed to start. Exam may not be active yet.");
+        Swal.fire({
+          title: "Exam Inactive",
+          text: data.message || "Failed to start. Exam may not be active yet.",
+          icon: "warning",
+          confirmButtonColor: "#3b82f6"
+        });
         return;
       }
 
@@ -843,7 +903,12 @@ const ExamPage = () => {
       enterFullscreen();
       timer.start();
     } catch (err) {
-      alert("Error starting exam");
+      Swal.fire({
+        title: "Start Error",
+        text: "Error starting exam drive.",
+        icon: "error",
+        confirmButtonColor: "#3b82f6"
+      });
     } finally {
       setLoading(false);
     }
@@ -905,7 +970,9 @@ const ExamPage = () => {
     return ans && ans.selectedOption !== null;
   };
 
-  if (loading) return null;
+  if (loading) {
+    return <Loader />;
+  }
 
   if (isTerminatedByAdmin) {
     return (
@@ -986,9 +1053,9 @@ const ExamPage = () => {
   // PRE START SCREEN
   // =======================
   if (!started) {
-    const isWaiting = timeLeftToStart !== null && timeLeftToStart > 0;
-    const hasNegativeMarking = exam.questions?.some((q: any) => (q.negativeMarks || 0) > 0);
-    const maxNegativeMark = exam.questions?.reduce((max: number, q: any) => Math.max(max, q.negativeMarks || 0), 0) || 0;
+    const isWaiting = timeLeftToStart === null || timeLeftToStart > 0;
+    const hasNegativeMarking = !!(exam?.hasNegativeMarking || exam.questions?.some((q: any) => (q.negativeMarks || 0) > 0));
+    const maxNegativeMark = exam?.maxNegativeMark || exam.questions?.reduce((max: number, q: any) => Math.max(max, q.negativeMarks || 0), 0) || 0;
 
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 md:p-8 font-sans text-slate-800">
@@ -1119,15 +1186,25 @@ const ExamPage = () => {
           <div className="lg:col-span-7 p-6 md:p-8 flex flex-col justify-between space-y-6 bg-white">
             
             {/* Header Details */}
-            <div className="space-y-1 text-left">
-              <h1 className="text-2xl font-black text-slate-955 tracking-tight">{exam.title}</h1>
-              <div className="flex items-center gap-3">
+            <div className="space-y-1.5 text-left">
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">{exam.title}</h1>
+              <div className="flex flex-wrap items-center gap-3">
                 <Badge variant="secondary" className="bg-slate-100 text-slate-600 border border-slate-200/60 font-mono text-[10px] uppercase font-bold py-0.5 px-2.5">
                   Code: {exam.examCode}
                 </Badge>
-                <span className="text-xs text-slate-400 flex items-center gap-1">
+                <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5 animate-pulse text-blue-600" /> {exam.duration} Minutes
                 </span>
+                {exam.startTime && (
+                  <span className="text-xs text-slate-400 font-medium">
+                    • Start: {new Date(exam.startTime).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                  </span>
+                )}
+                {exam.endTime && (
+                  <span className="text-xs text-slate-400 font-medium">
+                    • End: {new Date(exam.endTime).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                  </span>
+                )}
               </div>
             </div>
 

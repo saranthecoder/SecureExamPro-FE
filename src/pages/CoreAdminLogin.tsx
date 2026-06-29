@@ -21,9 +21,14 @@ const CoreAdminLogin = () => {
     e.preventDefault();
     setError("");
 
+    const savedAdmin = JSON.parse(
+      localStorage.getItem("adminCredentials") ||
+      '{"username":"coreadmin","password":"Secure@123","email":"coreadmin@secureexam.com"}'
+    );
+
     if (
-      username === DEFAULT_ADMIN.username &&
-      password === DEFAULT_ADMIN.password
+      username === savedAdmin.username &&
+      password === savedAdmin.password
     ) {
       setLoading(true);
       localStorage.setItem("coreAdmin", "true");
